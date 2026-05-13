@@ -653,7 +653,7 @@ write_address: .word write
 table_address: .word table
 
 ## Because ARM does't support full size immediates
-start_address: .word 0x8048000
+start_address: .word 0x10000
 
 .data
 ELF_end:
