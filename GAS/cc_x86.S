@@ -293,6 +293,8 @@ get_token_comment:
 	push {r14}
 	bl fgetc                            @ get next C
 	pop {r14}
+	cmp r0, #-4                         @ Check for EOF
+	beq get_token_abort                 @ Stop on EOF
 	ldr r8, C_address
 	str r0, [r8]                        @ Set C
 get_token_comment_block_outer:
@@ -311,6 +313,8 @@ get_token_comment_block_inner:
 	push {r14}
 	bl fgetc                            @ get next C
 	pop {r14}
+	cmp r0, #-4                         @ Check for EOF
+	beq get_token_abort                 @ Stop on EOF
 	ldr r8, C_address
 	str r0, [r8]                        @ Set C
 	b get_token_comment_block_inner     @ keep going
@@ -319,6 +323,8 @@ get_token_comment_block_iter:
 	push {r14}
 	bl fgetc                            @ get next C
 	pop {r14}
+	cmp r0, #-4                         @ Check for EOF
+	beq get_token_abort                 @ Stop on EOF
 	ldr r8, C_address
 	str r0, [r8]                        @ Set C
 	b get_token_comment_block_outer
@@ -465,8 +471,11 @@ purge_macro:
 	push {r14}
 	bl fgetc                            @ read next char
 	pop {r14}
+	cmp r0, #-4                         @ Check for EOF
+	beq purge_macro_done                @ Be done on EOF
 	cmp r0, #10                         @ Check for '\n'
 	bne purge_macro                     @ Keep going
+purge_macro_done:
 	bx r14
 
 
@@ -568,6 +577,8 @@ consume_word_iter:
 	push {r14}
 	bl consume_byte                     @ read next char
 	pop {r14}
+	cmp r0, #-4                         @ Check for EOF
+	beq consume_word_done               @ Be done on EOF
 
 	cmp r2, #0                          @ IF ESCAPE
 	bne consume_word_loop               @ keep looping
@@ -578,6 +589,7 @@ consume_word_iter:
 	push {r14}
 	bl fgetc                            @ return next char
 	pop {r14}
+consume_word_done:
 	pop {r2}                            @ Restore R2
 	pop {r1}                            @ Restore R1
 	bx r14
@@ -804,6 +816,8 @@ new_type:
 
 enumerator:
 	ldr r0, [r12]                       @ Using global_token->s
+	cmp r0, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 	ldr r0, [r0, #8]
 	mov r1, #0                          @ NULL
 	ldr r8, global_constant_list_address
@@ -817,12 +831,17 @@ enumerator:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 
 	adr r0, enum_error_equal            @ Using "ERROR in statement\nMissing =\n"
 	adr r1, equal_program               @ Using "="
 	push {r14}
 	bl require_match                    @ Make sure it has the required
 	pop {r14}
+	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	ldr r1, [r12]                       @ Using global_token
 	ldr r0, global_constant_list_address
@@ -832,6 +851,8 @@ enumerator:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 
 	ldr r1, [r0, #8]                    @ global_token->s
 	adr r0, comma_program               @ ","
@@ -845,6 +866,8 @@ enumerator:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 
 	@ Check if there are more enumerators or if it was a trailing comma
 	ldr r1, [r0, #8]                    @ GLOBAL_TOKEN->S
@@ -876,6 +899,9 @@ program_else:
 	pop {r14}
 	cmp r0, #0                          @ IF NULL == type_size
 	beq new_type                        @ it was a new type
+	ldr r1, [r12]                       @ Using global token
+	cmp r1, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 
 	## Add to global symbol table
 	mov r1, r0                          @ put type_size in the right spot
@@ -891,6 +917,8 @@ program_else:
 	ldr r1, [r12]                       @ Using global token
 	ldr r1, [r1]                        @ global_token->next
 	str r1, [r12]                       @ global_token = global_token->next
+	cmp r1, #0                          @ Check for NULL
+	beq program_done                    @ Be done if null
 
 	ldr r1, [r12]                       @ Using global token
 	ldr r1, [r1, #8]                    @ global_token->S
@@ -949,6 +977,7 @@ program_function:
 program_error:
 	## Deal with the case of something we don't support
 	## NOT IMPLEMENTED
+	b Exit_Failure
 
 program_done:
 	pop {r2}                            @ Restore R2
@@ -997,6 +1026,9 @@ declare_function:
 	push {r14}
 	bl collect_arguments                @ collect all of the function arguments
 	pop {r14}
+	ldr r0, [r12]                       @ Using global token
+	cmp r0, #0                          @ Check for NULL
+	beq declare_function_done           @ Be done if null
 
 	ldr r0, [r12]                       @ Using global token
 	ldr r0, [r0, #8]                    @ global token->s
@@ -1093,8 +1125,12 @@ collect_arguments:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq collect_arguments_done          @ Be done if null
 collect_arguments_loop:
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq collect_arguments_done          @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, close_paren_0               @ ")"
 	push {r14}
@@ -1108,6 +1144,9 @@ collect_arguments_loop:
 	bl type_name                        @ Get the type
 	pop {r14}
 	mov r2, r0                          @ put type_size safely out of the way
+	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq collect_arguments_done          @ Be done if null
 
 	ldr r1, [r12]                       @ Using global_token
 	ldr r1, [r1, #8]                    @ global_token->S
@@ -1161,6 +1200,8 @@ collect_arguments_next:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq collect_arguments_done          @ Be done if null
 
 	ldr r0, [r11]                       @ Using function
 	str r2, [r0, #16]                   @ function->args = a
@@ -1179,12 +1220,17 @@ collect_arguments_common:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq collect_arguments_done          @ Be done if null
 	b collect_arguments_loop            @ keep going
 
 collect_arguments_done:
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq collect_arguments_finish        @ Be done if null
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+collect_arguments_finish:
 	pop {r2}                            @ Restore R2
 	pop {r1}                            @ Restore R1
 	bx r14
@@ -1204,6 +1250,8 @@ statement:
 	push {r2}                           @ Protect R2
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq statement_done                  @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, open_curly_brace_0          @ "{"
 	push {r14}
@@ -1350,6 +1398,8 @@ statement_goto:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq statement_done                  @ Be done if null
 
 	ldr r0, [r0, #8]                    @ global_token->S
 	push {r14}
@@ -1489,12 +1539,16 @@ recursive_statement:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	ldr r2, [r11]                       @ Using function
 	ldr r2, [r2, #4]                    @ frame = function->locals
 
 recursive_statement_loop:
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, close_curly_brace           @ Using "}"
 	push {r14}
@@ -1567,6 +1621,8 @@ return_result:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->next
 	str r0, [r12]                       @ global_token = global_token->next
+	cmp r0, #0                          @ Check for NULL
+	beq return_result_cleanup           @ Be done if null
 
 	ldr r0, [r0, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
@@ -1630,6 +1686,8 @@ collect_local:
 
 	mov r1, r0                          @ Put struct type* type_size in the right place
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq collect_local_done              @ Be done if null
 	ldr r0, [r0, #8]                    @ global_token->S
 	ldr r2, [r11]                       @ Using function
 	ldr r2, [r2, #4]                    @ function->locals
@@ -1722,6 +1780,8 @@ collect_local_common:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq collect_local_done              @ Be done if null
 
 	ldr r1, [r0, #8]                    @ global_token->S
 	adr r0, equal_0                     @ Using "="
@@ -1801,6 +1861,8 @@ process_asm:
 
 	ldr r1, [r12]                       @ Using global_token
 process_asm_iter:
+	cmp r1, #0                          @ Check for NULL
+	beq process_asm_done                @ Be done if null
 	ldr r0, [r1, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
 	cmp r0, #34                         @ IF global_token->S[0] == '\"'
@@ -1819,6 +1881,8 @@ process_asm_iter:
 
 	ldr r1, [r1]                        @ global_token->NEXT
 	str r1, [r12]                       @ global_token = global_token->NEXT
+	cmp r1, #0                          @ Check for NULL
+	beq process_asm_done                @ Be done if null
 	b process_asm_iter                  @ keep going
 
 process_asm_done:
@@ -1887,6 +1951,8 @@ process_if:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	adr r0, process_if_string_1         @ Using "ERROR in process_if\nMISSING (\n"
 	adr r1, open_paren_2                @ Using "("
@@ -1919,6 +1985,9 @@ process_if:
 	push {r14}
 	bl statement                        @ Recursive to get the IF(){...} part
 	pop {r14}
+	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq process_if_done                 @ Be done if null
 
 	adr r0, process_if_string_4         @ Using "JUMP %_END_IF_"
 	push {r14}
@@ -1944,6 +2013,8 @@ process_if:
 	pop {r14}
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq process_if_done                 @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, else_string                 @ Using "else"
 	push {r14}
@@ -1956,6 +2027,8 @@ process_if:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq process_if_done                 @ Be done if null
 
 	push {r14}
 	bl statement                        @ Recurse to get the ELSE {...} part
@@ -2383,6 +2456,8 @@ process_for:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ Be done if null
 
 	adr r0, process_for_string_2        @ Using "ERROR in process_for\nMISSING (\n"
 	adr r1, open_paren_5                @ Using "("
@@ -2391,6 +2466,8 @@ process_for:
 	pop {r14}
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, semicolon_7                 @ Using ";"
 	push {r14}
@@ -2697,6 +2774,9 @@ expression:
 	push {r14}
 	bl bitwise_expr                     @ Collect bitwise expressions
 	pop {r14}
+	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq expression_done                 @ Be done if null
 
 	ldr r1, [r12]                       @ Using global_token
 	ldr r1, [r1, #8]                    @ global_token->S
@@ -3087,6 +3167,8 @@ postfix_expr:
 postfix_expr_stub:
 	push {r1}                           @ Protect R1
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq postfix_expr_stub_done          @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, open_bracket_0              @ Using "["
 	push {r14}
@@ -3204,6 +3286,8 @@ postfix_expr_array:
 	pop {r14}
 
 	pop {r1}                            @ Restore array
+	cmp r1, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on bad array target
 	ldr r8, current_target_address
 	str r1, [r8]                        @ current_target = ARRAY
 
@@ -3256,6 +3340,8 @@ postfix_expr_array_common:
 	pop {r14}
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq postfix_expr_array_done         @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, equal_2                     @ Using "="
 	push {r14}
@@ -3346,10 +3432,14 @@ postfix_expr_arrow:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq postfix_expr_arrow_done         @ Be done if null
 
 	ldr r1, [r0, #8]                    @ Using global_token->S
 	ldr r8, current_target_address
 	ldr r0, [r8]                        @ Using current_target
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on bad arrow target
 	push {r14}
 	bl lookup_member                    @ lookup_member(current_target, global_token->s)
 	pop {r14}
@@ -3362,6 +3452,8 @@ postfix_expr_arrow:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq postfix_expr_arrow_done         @ Be done if null
 
 	ldr r0, [r1, #8]                    @ I->OFFSET
 	cmp r0, #0                          @ IF 0 != I->OFFSET
@@ -3391,6 +3483,8 @@ postfix_expr_arrow_first:
 
 	## Last chance for load
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq postfix_expr_arrow_done         @ Be done if null
 	ldr r1, [r0, #8]                    @ global_token->S
 	adr r0, equal_3                     @ Using "="
 	push {r14}
@@ -3429,6 +3523,8 @@ primary_expr:
 	push {r1}                           @ Protect R1
 
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq primary_expr_done               @ Be done if null
 	ldr r1, [r0, #8]                    @ global_token->S
 	adr r0, sizeof_string               @ Using "sizeof"
 	push {r14}
@@ -3772,6 +3868,9 @@ function_call:
 	mov r2, r0                          @ Put S in place
 	mov r3, r1                          @ Put BOOL in place
 	mov r4, #0                          @ PASSED = 0
+	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq function_call_done              @ Be done if null
 
 	adr r0, function_call_string_0      @ Using "ERROR in process_expression_list\nNo ( was found\n"
 	adr r1, open_paren_7                @ Using "("
@@ -3795,6 +3894,8 @@ function_call:
 	pop {r14}
 
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq function_call_gen_done          @ Be done if null
 	ldr r0, [r0, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
 	cmp r0, #41                         @ IF global_token->S[0] == ")"
@@ -3813,6 +3914,8 @@ function_call:
 
 function_call_gen_iter:
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq function_call_gen_done          @ Be done if null
 	ldr r0, [r0, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
 	cmp r0, #44                         @ IF global_token->S[0] == ","
@@ -3821,6 +3924,8 @@ function_call_gen_iter:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq function_call_gen_done          @ Be done if null
 
 	push {r14}
 	bl expression                       @ Collect the argument
@@ -3973,6 +4078,9 @@ variable_load:
 	push {r1}                           @ Protect R1
 	push {r2}                           @ Protect R2
 	mov r2, r0                          @ Protect A
+	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq variable_load_done              @ Be done if null
 
 	ldr r1, [r12]                       @ Using global_token
 	ldr r1, [r1, #8]                    @ global_token->S
@@ -4026,6 +4134,8 @@ variable_load_regular:
 
 	## Check for special case of assignment
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq variable_load_done              @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, equal_4                     @ Using "="
 	push {r14}
@@ -4067,6 +4177,8 @@ function_load:
 	ldr r0, [r0, #8]                    @ A->S
 	mov r2, r0                          @ Protect A->S
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq function_load_regular           @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, open_paren_8                @ Using "("
 	push {r14}
@@ -4141,6 +4253,8 @@ global_load:
 	pop {r14}
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq global_load_done                @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, equal_5                     @ "="
 	push {r14}
@@ -4392,6 +4506,8 @@ general_recursion:
 	mov r2, r1                          @ Protect S
 
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq general_recursion_done          @ Be done if null
 	ldr r1, [r1, #8]                    @ global_token->S
 	push {r14}
 	bl match                            @ IF match(name, global_token->s)
@@ -4529,6 +4645,8 @@ require_match:
 	push {r2}                           @ Protect R2
 	mov r2, r0                          @ put the message somewhere safe
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq require_match_bad               @ fail cleanly on EOF
 	ldr r0, [r0, #8]                    @ global_token->S
 	push {r14}
 	bl match                            @ IF required == global_token->S
@@ -4536,6 +4654,7 @@ require_match:
 	cmp r0, #0                          @ we are fine
 	beq require_match_good              @ otherwise pain
 
+require_match_bad:
 	## Deal will bad times
 #	bl line_error                       @ Tell user what went wrong
 	mov r0, #2                          @ Using standard error
@@ -5040,6 +5159,8 @@ type_name:
 	push {r1}                           @ Protect R1
 	push {r2}                           @ Protect R2
 	ldr r1, [r12]                       @ Using global_token
+	cmp r1, #0                          @ Check for NULL
+	beq type_name_bad                   @ fail cleanly on EOF
 	ldr r1, [r1, #8]                    @ global_token->S
 	adr r0, struct                      @ Using "struct"
 	push {r14}
@@ -5053,6 +5174,8 @@ type_name:
 	ldr r1, [r12]                       @ Using global_token
 	ldr r1, [r1]                        @ global_token->next
 	str r1, [r12]                       @ global_token = global_token->next
+	cmp r1, #0                          @ Check for NULL
+	beq type_name_bad                   @ fail cleanly on EOF
 	ldr r0, [r1, #8]                    @ global_token->S
 	ldr r8, global_types_address
 	ldr r1, [r8]                        @ get all known types
@@ -5084,6 +5207,7 @@ type_name_native:
 	cmp r0, #0                          @ IF NULL == ret
 	bne type_name_common                @ We need to abort hard
 
+type_name_bad:
 	## Aborting hard
 	mov r0, #2                          @ Using Standard error
 	ldr r8, Output_file_address_5
@@ -5094,11 +5218,14 @@ type_name_native:
 	pop {r14}
 
 	ldr r0, [r12]                       @ Using global token
+	cmp r0, #0                          @ Check for NULL
+	beq type_name_bad_footer            @ Nothing to print on EOF
 	ldr r0, [r0, #8]                    @ global_token->S
 	push {r14}
 	bl File_Print                       @ Print it
 	pop {r14}
 
+type_name_bad_footer:
 	adr r0, type_name_string_1          @ Print footer
 	push {r14}
 	bl File_Print                       @ Print it
@@ -5113,6 +5240,8 @@ type_name_common:
 	str r1, [r12]                       @ global_token = global_token->next
 
 type_name_iter:
+	cmp r1, #0                          @ Check for NULL
+	beq type_name_done                  @ Be done if null
 	ldr r0, [r1, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
 	cmp r0, #42                         @ IF global_token->S[0] == '*'
@@ -5123,6 +5252,8 @@ type_name_iter:
 	ldr r1, [r12]                       @ Using global_token
 	ldr r1, [r1]                        @ global_token->next
 	str r1, [r12]                       @ global_token = global_token->next
+	cmp r1, #0                          @ Check for NULL
+	beq type_name_done                  @ Be done if null
 	b type_name_iter                    @ keep looping
 
 type_name_done:
@@ -5207,6 +5338,8 @@ create_struct:
 
 	str r6, [r3, #12]                   @ HEAD->INDIRECT = I
 	str r3, [r6, #12]                   @ I->INDIRECT = HEAD
+	str r3, [r3, #20]                   @ HEAD->TYPE = HEAD
+	str r6, [r6, #20]                   @ I->TYPE = I
 
 	ldr r8, global_types_address
 	ldr r0, [r8]                        @ Using global_types
@@ -5216,6 +5349,8 @@ create_struct:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	mov r0, #4                          @ Using register size
 	str r0, [r6, #4]                    @ I->SIZE = register size
@@ -5230,6 +5365,8 @@ create_struct:
 
 create_struct_iter:
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 	ldr r0, [r0, #8]                    @ global_token->S
 	ldrb r0, [r0]                       @ global_token->S[0]
 	cmp r0, #125                        @ IF global_token->S[0] == "}"
@@ -5254,6 +5391,8 @@ create_struct_done:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	adr r0, create_struct_string_1      @ Using "ERROR in create_struct\n Missing ;\n"
 	adr r1, semicolon_9                 @ Using ";"
@@ -5293,6 +5432,8 @@ lookup_member:
 	push {r2}                           @ Protect R2
 	push {r3}                           @ Protect R3
 	mov r3, r0                          @ Protect Parent
+	cmp r0, #0                          @ Check for NULL
+	beq lookup_member_fail              @ fail cleanly on bad target
 	ldr r2, [r0, #16]                   @ struct type* I = parent->MEMBERS
 lookup_member_iter:
 	cmp r2, #0                          @ IF I == NULL
@@ -5322,10 +5463,13 @@ lookup_member_fail:
 	bl File_Print                       @ print it
 	pop {r14}
 
+	cmp r3, #0                          @ Check for NULL
+	beq lookup_member_no_parent         @ Skip parent name on bad target
 	ldr r0, [r3, #24]                   @ PARENT->NAME
 	push {r14}
 	bl File_Print                       @ print it
 	pop {r14}
+lookup_member_no_parent:
 
 	adr r0, arrow_string_1              @ Using "->"
 	push {r14}
@@ -5385,10 +5529,14 @@ build_member:
 	mov r2, r0                          @ Put in place
 	str r2, [r3, #20]                   @ I->TYPE = MEMBER_TYPE
 	ldr r0, [r12]                       @ Using global_token
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 	ldr r1, [r0, #8]                    @ global_token->S
 	str r1, [r3, #24]                   @ I->NAME = global_token->S
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	## Check if we have an array
 	ldr r1, [r0, #8]                    @ global_token->S
@@ -5408,6 +5556,8 @@ build_member_array:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	ldr r0, [r0, #8]                    @ global_token->S
 	push {r14}
@@ -5421,6 +5571,8 @@ build_member_array:
 	ldr r0, [r12]                       @ Using global_token
 	ldr r0, [r0]                        @ global_token->NEXT
 	str r0, [r12]                       @ global_token = global_token->NEXT
+	cmp r0, #0                          @ Check for NULL
+	beq Exit_Failure                    @ fail cleanly on EOF
 
 	adr r0, build_member_string_0       @ Using "Struct only supports [num] form\n"
 	adr r1, close_bracket_2             @ Using "]"
