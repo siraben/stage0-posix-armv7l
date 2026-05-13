@@ -593,6 +593,8 @@ consume_byte:
 	ldr r1, [r8]                        @ S[0]
 	strb r0, [r1]                       @ S[0] = C
 	add r1, #1                          @ S = S + 1
+	mov r0, #0                          @ NULL terminate S
+	strb r0, [r1]                       @ S[0] = NULL
 	str r1, [r8]                        @ Update S
 	push {r14}
 	bl fgetc
